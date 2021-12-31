@@ -23,6 +23,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.openapitools.codegen.*;
 import org.openapitools.codegen.meta.features.DocumentationFeature;
 import org.openapitools.codegen.utils.ModelUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
@@ -35,9 +37,12 @@ public class TypeScriptAxiosClientCodegen extends AbstractTypeScriptClientCodege
     public static final String USE_SINGLE_REQUEST_PARAMETER = "useSingleRequestParameter";
     public static final String WITH_NODE_IMPORTS = "withNodeImports";
     public static final String IMPLICIT_HEADERS = "implicitHeaders";
+    public static final String REMOVE_HEADERS_FROM_PARAMS = "headersToRemoveFromParams";
 
     protected String npmRepository = null;
     protected boolean implicitHeaders = false;
+    protected List<String> headersToRemoveFromParams = new ArrayList<String>();
+    private final Logger LOGGER = LoggerFactory.getLogger(TemplateManager.class);
 
     private String tsModelPackage = "";
 
@@ -60,6 +65,7 @@ public class TypeScriptAxiosClientCodegen extends AbstractTypeScriptClientCodege
         this.cliOptions.add(new CliOption(USE_SINGLE_REQUEST_PARAMETER, "Setting this property to true will generate functions with a single argument containing all API endpoint parameters instead of one argument per parameter.", SchemaTypeUtil.BOOLEAN_TYPE).defaultValue(Boolean.FALSE.toString()));
         this.cliOptions.add(new CliOption(WITH_NODE_IMPORTS, "Setting this property to true adds imports for NodeJS", SchemaTypeUtil.BOOLEAN_TYPE).defaultValue(Boolean.FALSE.toString()));
         this.cliOptions.add(new CliOption(IMPLICIT_HEADERS, "Skip header parameters in the generated API methods using @ApiImplicitParams annotation.", SchemaTypeUtil.BOOLEAN_TYPE).defaultValue(Boolean.FALSE.toString()));
+        this.cliOptions.add(new CliOption(REMOVE_HEADERS_FROM_PARAMS, "Skip header parameters in the generated API methods using @ApiImplicitParams annotation.", SchemaTypeUtil.STRING_TYPE).defaultValue(""));
         // Templates have no mapping between formatted property names and original base names so use only "original" and remove this option
         removeOption(CodegenConstants.MODEL_PROPERTY_NAMING);
     }
@@ -137,6 +143,18 @@ public class TypeScriptAxiosClientCodegen extends AbstractTypeScriptClientCodege
         if (additionalProperties.containsKey(IMPLICIT_HEADERS)) {
           this.implicitHeaders = Boolean.parseBoolean(additionalProperties.get(IMPLICIT_HEADERS).toString());
         }
+
+        if (additionalProperties.containsKey(REMOVE_HEADERS_FROM_PARAMS)) {
+          String rawValue = additionalProperties.get(REMOVE_HEADERS_FROM_PARAMS).toString();
+          LOGGER.info("--______----___");
+          LOGGER.info("RAW VALUE");
+          LOGGER.info(rawValue);
+          if(!rawValue.isEmpty())
+          {
+            String [] items = rawValue.split("/");
+            this.headersToRemoveFromParams = Arrays.asList(items);
+          }
+        }
     }
 
     @Override
@@ -161,7 +179,40 @@ public class TypeScriptAxiosClientCodegen extends AbstractTypeScriptClientCodege
           }
         }
 
+        LOGGER.info("LOGGING HEADERS ARRAY");
+        for (final String headerName : headersToRemoveFromParams) {
+          LOGGER.info(headerName);
+        }
+
+        if(operations != null && headersToRemoveFromParams.size() > 0)
+        {
+          LOGGER.info("GOING TO REMOVE EM");
+          for (final CodegenOperation operation : operations) {
+            removeHeadersFromParams(operation.allParams);
+          }
+        }
+
         return objs;
+    }
+
+    private void removeHeadersFromParams(List<CodegenParameter> allParams)
+    {
+      if (allParams.isEmpty()) {
+        return;
+      }
+      final ArrayList<CodegenParameter> copy = new ArrayList<>(allParams);
+      allParams.clear();
+      for (final CodegenParameter p : copy) {
+        LOGGER.info("REMOVING");
+        LOGGER.info(p.baseName);
+        LOGGER.info(p.paramName);
+        if(p.isHeaderParam && headersToRemoveFromParams.contains(p.baseName)) {
+          // This is a header parameter and it's been explicitly ignored from method params.
+          // Ignore it and move onto the next parameter.
+          continue;
+        } 
+        allParams.add(p);
+      }
     }
 
     /**
